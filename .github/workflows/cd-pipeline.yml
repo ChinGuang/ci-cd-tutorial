@@ -34,13 +34,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Authenticate for GCP
-        id: gcp-auth
-        uses: google-github-actions/auth@v3
-        with:
-          project_id: ${{secrets.GCP_PROJECT_ID}}
-          workload_identity_provider: ${{secrets.GCP_WORKLOAD_IDENTITY_PROVIDER}}
-          service_account: ${{secrets.GCP_SERVICE_ACCOUNT}}
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v0
 
@@ -51,15 +44,27 @@ jobs:
           D_PASS: ${{secrets.DOCKER_PASSWORD}}
         run: |
           docker login -u $D_USER -p $D_PASS
+
       - name: Build and tag Image
         run: |
           docker build -t ${{env.IMAGE}} .
+
       - name: Push the image to Docker hub
         run: |
           docker push ${{env.IMAGE}}
+
+      - name: Authenticate for GCP
+        id: gcp-auth
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{secrets.GCP_PROJECT_ID}}
+          workload_identity_provider: ${{secrets.GCP_WORKLOAD_IDENTITY_PROVIDER}}
+          service_account: ${{secrets.GCP_SERVICE_ACCOUNT}}
+
       - name: Enable the Billing API
         run: |
           gcloud services enable cloudbilling.googleapis.com --project=${{secrets.GCP_PROJECT_ID}}
+
       - name: Deploy to GCP Run - Production environment (If a new release was published from the master branch)
         if: github.event_name == 'release' && github.event.action == 'published' && github.event.release.target_commitish == 'main'
         run: |
@@ -73,6 +78,7 @@ jobs:
         if: github.ref != 'refs/heads/main'
         run: |
           echo "Deploying to staging environment"
+
           # Deploy service with to staging environment
           gcloud run deploy ${{vars.GCR_STAGING_PROJECT_NAME}} \
           --region ${{vars.GCR_REGION}} \
@@ -80,3 +86,4 @@ jobs:
           --platform "managed" \
           --allow-unauthenticated \
           --tag staging \
+          --revision-suffix=staging-${{github.sha}}
